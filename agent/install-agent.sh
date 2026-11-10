@@ -21,6 +21,8 @@ METADATA="${ZBX_METADATA:-fleet linux cpanel}"
 EL="${VERSION_ID%%.*}"
 echo "==> $PRETTY_NAME (EL$EL), host '$HOSTNAME_ZBX' -> server $ZBX_SERVER"
 
+PKG=$(command -v dnf || command -v yum) || { echo "No dnf/yum found."; exit 1; }
+
 # Zabbix docs: stop EPEL from shipping its own (older) zabbix packages
 if [[ -f /etc/yum.repos.d/epel.repo ]] && ! grep -q 'excludepkgs=zabbix\*' /etc/yum.repos.d/epel.repo; then
   sed -i '/^\[epel\]/a excludepkgs=zabbix*' /etc/yum.repos.d/epel.repo
@@ -31,28 +33,36 @@ if ! rpm -q zabbix-release >/dev/null 2>&1; then
   ok=0
   for url in \
     "https://repo.zabbix.com/zabbix/7.0/alma/$EL/x86_64/zabbix-release-latest-7.0.el$EL.noarch.rpm" \
-    "https://repo.zabbix.com/zabbix/7.0/alma/$EL/x86_64/zabbix-release-latest.el$EL.noarch.rpm" \
-    "https://repo.zabbix.com/zabbix/7.0/rhel/$EL/x86_64/zabbix-release-latest-7.0.el$EL.noarch.rpm"; do
+    "https://repo.zabbix.com/zabbix/7.0/rhel/$EL/x86_64/zabbix-release-latest-7.0.el$EL.noarch.rpm" \
+    "https://repo.zabbix.com/zabbix/7.0/alma/$EL/x86_64/zabbix-release-latest.el$EL.noarch.rpm"; do
     if rpm -Uvh "$url" 2>/dev/null; then ok=1; break; fi
   done
   [[ $ok -eq 1 ]] || { echo "Could not add Zabbix repo. Check https://repo.zabbix.com/zabbix/7.0/"; exit 1; }
-  dnf clean all -q
+fi
+$PKG clean all -q >/dev/null 2>&1 || true
+
+# agent2 where available (EL8+); classic agent on EL7 (Zabbix ships no agent2 for EL7)
+if [[ "$EL" -ge 8 ]]; then
+  PKGNAME=zabbix-agent2; SVC=zabbix-agent2; CONF=/etc/zabbix/zabbix_agent2.conf
+  DROPIN_DIR=/etc/zabbix/zabbix_agent2.d; LOG=/var/log/zabbix/zabbix_agent2.log
+else
+  PKGNAME=zabbix-agent;  SVC=zabbix-agent;  CONF=/etc/zabbix/zabbix_agentd.conf
+  DROPIN_DIR=/etc/zabbix/zabbix_agentd.d;  LOG=/var/log/zabbix/zabbix_agentd.log
 fi
 
-echo "==> Installing zabbix-agent2"
-dnf install -y -q zabbix-agent2
+echo "==> Installing $PKGNAME"
+$PKG install -y -q $PKGNAME
 
 echo "==> Writing PSK and config"
 install -m 640 -o root -g zabbix /dev/null /etc/zabbix/fleet.psk
 echo "$ZBX_PSK" > /etc/zabbix/fleet.psk
 
-CONF=/etc/zabbix/zabbix_agent2.conf
 cp -n $CONF ${CONF}.orig
-# comment out defaults we override (agent2 rejects duplicate keys)
+# comment out defaults we override (duplicate keys are rejected)
 sed -i -E 's/^(Server|ServerActive|Hostname|ListenIP|HostMetadata)=/# &/' $CONF
 
-mkdir -p /etc/zabbix/zabbix_agent2.d
-cat > /etc/zabbix/zabbix_agent2.d/fleet.conf <<CONF
+mkdir -p $DROPIN_DIR
+cat > $DROPIN_DIR/fleet.conf <<CONF
 # Managed by fleet-monitoring/install-agent.sh
 Server=127.0.0.1
 ListenIP=127.0.0.1
@@ -64,10 +74,10 @@ TLSAccept=psk
 TLSPSKIdentity=fleet-psk
 TLSPSKFile=/etc/zabbix/fleet.psk
 CONF
-grep -q '^Include=/etc/zabbix/zabbix_agent2.d/\*.conf' $CONF || echo 'Include=/etc/zabbix/zabbix_agent2.d/*.conf' >> $CONF
+grep -q "^Include=$DROPIN_DIR/\*.conf" $CONF || echo "Include=$DROPIN_DIR/*.conf" >> $CONF
 
-systemctl enable --now zabbix-agent2
-systemctl restart zabbix-agent2
+systemctl enable $SVC >/dev/null 2>&1
+systemctl restart $SVC
 sleep 3
-systemctl is-active zabbix-agent2 && echo "==> Agent running. Check the server UI: host should auto-register within ~1 minute."
-tail -5 /var/log/zabbix/zabbix_agent2.log || true
+systemctl is-active $SVC && echo "==> $SVC running. Host should auto-register within ~1 minute."
+tail -5 $LOG || true
