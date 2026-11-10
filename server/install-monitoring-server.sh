@@ -81,16 +81,12 @@ podman run -d --pod fleetmon --name fleetmon-grafana --restart=always --memory=3
 echo "==> Start containers on boot"
 systemctl enable --now podman-restart.service >/dev/null 2>&1 || true
 
-echo "==> Firewall: allow 10051 only from agent IPs"
-if systemctl is-active -q firewalld; then
-  for ip in $AGENT_IPS; do
-    firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip port port=10051 protocol=tcp accept"
-  done
-  firewall-cmd --reload
-fi
+echo "==> Firewall: allow 10051 only from agent IPs (nftables, see firewall-lock.sh)"
+# NOTE: firewalld rules alone do NOT protect Podman-published ports (netavark NAT bypasses them).
+bash "$(dirname "$0")/firewall-lock.sh" $AGENT_IPS
 if command -v imunify360-agent >/dev/null; then
   for ip in $AGENT_IPS; do
-    imunify360-agent whitelist ip add "$ip" --comment "fleet-monitoring agent" || true
+    imunify360-agent ip-list local add --purpose white "$ip" --comment "fleet-monitoring agent" >/dev/null || true
   done
 fi
 
@@ -103,8 +99,7 @@ cat <<DONE
  Reach them from your laptop with an SSH tunnel, e.g.
    ssh -L ${WEB_PORT}:127.0.0.1:${WEB_PORT} -L ${GRAFANA_PORT}:127.0.0.1:${GRAFANA_PORT} <this-server>
 
- Agent PSK (needed by install-agent.sh on every server):
-   identity: fleet-psk
-   key     : $(cat $BASE/fleet.psk)
+ Next: bash configure-zabbix.sh   (sets up auto-registration, rotates the PSK)
+ The agent PSK is stored in $BASE/fleet.psk (never printed).
 ==========================================================
 DONE

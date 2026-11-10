@@ -4,7 +4,6 @@
 set -euo pipefail
 ip="${1:?usage: allow-agent.sh <agent-ip>}"
 [[ $EUID -eq 0 ]] || { echo "Run as root."; exit 1; }
-firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip port port=10051 protocol=tcp accept"
-firewall-cmd --reload
-command -v imunify360-agent >/dev/null && imunify360-agent whitelist ip add "$ip" --comment "fleet-monitoring agent" || true
+bash "$(dirname "$0")/firewall-lock.sh" "$ip"
+command -v imunify360-agent >/dev/null && imunify360-agent ip-list local add --purpose white "$ip" --comment "fleet-monitoring agent" >/dev/null || true
 echo "Allowed $ip -> 10051"
