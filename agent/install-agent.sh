@@ -76,6 +76,17 @@ TLSPSKFile=/etc/zabbix/fleet.psk
 CONF
 grep -q "^Include=$DROPIN_DIR/\*.conf" $CONF || echo "Include=$DROPIN_DIR/*.conf" >> $CONF
 
+# CSF (common on cPanel/CloudLinux) filters OUTGOING ports too: allow 10051 out
+if [[ -f /etc/csf/csf.conf ]] && ! grep -qE '^TCP_OUT = "([^"]*,)?10051(,[^"]*)?"' /etc/csf/csf.conf; then
+  cp /etc/csf/csf.conf /etc/csf/csf.conf.bak-fleetmon
+  sed -i -E 's/^(TCP_OUT = "[^"]*)"/\1,10051"/' /etc/csf/csf.conf
+  csf -r >/dev/null 2>&1 && echo "==> CSF: allowed outgoing 10051"
+fi
+if [[ "$ZBX_SERVER" != 127.0.0.1 ]]; then
+  timeout 5 bash -c "</dev/tcp/$ZBX_SERVER/10051" 2>/dev/null && echo "==> Can reach $ZBX_SERVER:10051" \
+    || echo "!! Cannot reach $ZBX_SERVER:10051. Check this server's outgoing firewall and the allowlist on the monitoring server."
+fi
+
 systemctl enable $SVC >/dev/null 2>&1
 systemctl restart $SVC
 sleep 3
