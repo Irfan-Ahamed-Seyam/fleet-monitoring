@@ -25,11 +25,11 @@ now = time.time()
 print(f"{'HOST':32} {'AGENT':8} {'LAST DATA':10} {'CPU%':>6} {'MEM%':>6} {'PROBLEMS':>8}")
 for h in sorted(hosts, key=lambda x: x["host"]):
     items = {i["key_"]: i for i in call("item.get", {"hostids": h["hostid"], "output": ["key_", "lastvalue", "lastclock"],
-             "filter": {"key_": ["agent.ping", "system.cpu.util", "vm.memory.utilization"]}})}
+             "filter": {"key_": ["agent.ping", "system.cpu.util", "vm.memory.util"]}})}
     ping = items.get("agent.ping", {})
     age = int(now - int(ping.get("lastclock", 0))) if ping.get("lastclock", "0") != "0" else None
     cpu = items.get("system.cpu.util", {}).get("lastvalue")
-    mem = items.get("vm.memory.utilization", {}).get("lastvalue")
+    mem = items.get("vm.memory.util", {}).get("lastvalue")
     probs = len(call("problem.get", {"hostids": h["hostid"], "output": ["eventid"]}))
     print(f"{h['host']:32} {AVAIL.get(h['active_available'], '?'):8} "
           f"{(str(age) + 's ago') if age is not None else 'never':10} "
