@@ -7,7 +7,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "1m",
   "time": {
     "from": "now-6h",
@@ -148,7 +148,7 @@
         "x": 12,
         "y": 0,
         "w": 12,
-        "h": 10
+        "h": 12
       },
       "targets": [
         {
@@ -209,7 +209,7 @@
         "x": 0,
         "y": 5,
         "w": 12,
-        "h": 5
+        "h": 7
       },
       "targets": [
         {
@@ -309,7 +309,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 10,
+        "y": 12,
         "w": 12,
         "h": 8
       },
@@ -400,7 +400,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 10,
+        "y": 12,
         "w": 12,
         "h": 8
       },
@@ -491,7 +491,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 18,
+        "y": 20,
         "w": 12,
         "h": 8
       },
@@ -583,7 +583,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 18,
+        "y": 20,
         "w": 12,
         "h": 8
       },
@@ -672,7 +672,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 28,
         "w": 12,
         "h": 8
       },
@@ -697,7 +697,7 @@
             "filter": ""
           },
           "item": {
-            "filter": "/Interface .*: Bits received/"
+            "filter": "/Interface (?!podman|veth|cni|docker|lo\\b|virbr).*: Bits received/"
           },
           "functions": [
             {
@@ -761,7 +761,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 26,
+        "y": 28,
         "w": 12,
         "h": 8
       },
@@ -786,7 +786,7 @@
             "filter": ""
           },
           "item": {
-            "filter": "/Interface .*: Bits sent/"
+            "filter": "/Interface (?!podman|veth|cni|docker|lo\\b|virbr).*: Bits sent/"
           },
           "functions": [
             {
