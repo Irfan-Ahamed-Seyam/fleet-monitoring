@@ -5,7 +5,7 @@ Production monitoring for a **fleet of 6 Linux web servers** (cPanel, about 1,00
 Designed and rolled out on a live production fleet in November 2026. Every server has reported continuously since.
 
 ![Grafana Fleet Overview: live data from all 6 production servers](docs/images/grafana-fleet.png)
-<sub>Grafana "Fleet Overview" over the last 24 hours: agent status, root disk, active problems, CPU, memory, swap, load and network for all 6 servers. Server names are anonymized.</sub>
+<sub>Grafana "Fleet Overview": agent status, a <b>fleet summary</b> table (CPU, memory, swap, disk, load, uptime per server), <b>service status</b> (web, HTTPS, MySQL, SMTP, IMAP, WHM), active problems and 24-hour trends. Server names are anonymized.</sub>
 
 ---
 
@@ -16,6 +16,7 @@ Designed and rolled out on a live production fleet in November 2026. Every serve
 | **Monitored servers** | 6 production servers, a mixed fleet: AlmaLinux 8, 9, 10 and CloudLinux 7, 9 |
 | **Stack** | Zabbix 7.0 LTS server + web, PostgreSQL 16, Grafana 12 with the Zabbix plugin, Podman |
 | **Agents** | Zabbix agent2 (EL8+) or classic agent (EL7), **active mode**, **TLS-PSK encrypted** |
+| **Service checks** | Web (80/443), MySQL, SMTP, IMAP, WHM on every server, every minute. DOWN for 3 minutes raises a problem (High/Average/Warning by service) |
 | **Onboarding** | Auto-registration: a new server joins the "Fleet" group with the Linux template, no clicking needed |
 | **Exposure** | None. The UIs listen on `127.0.0.1` only, behind an SSH tunnel. Port 10051 is allowlisted per agent IP |
 | **Footprint (measured)** | Agent ~18–36 MB RAM and ~0.2% CPU per server. The whole monitoring stack uses ~0.7 GB RAM |
@@ -61,6 +62,14 @@ flowchart LR
 - **Least privilege.** Grafana reads Zabbix through a **read-only API user** scoped to the Fleet group. A separate **read-only viewer** account exists for teammates and screenshots, and its write access was tested and blocked.
 - **No secrets in this repo or on screen.** Passwords and the PSK are generated on the server (`/opt/fleet-monitoring`, mode 600). The PSK is never printed, and a rotation step is built in (`configure-zabbix.sh`).
 
+## Alert tuning
+
+A monitoring system that cries wolf gets ignored, so the alerts were tuned after the first day:
+- **Muted** "installed packages changed" and "OS description changed". They fire on every routine update and drowned out real issues.
+- **Kept** "/etc/passwd has been changed" and "system name has changed". They're security-relevant: an unexpected account change is exactly what a SOC wants to see.
+- **Excluded** `/swapfile` from filesystem discovery. It was being reported as a "full disk".
+- **Service triggers** are severity-graded (web and database: High, mail: Average, control panel: Warning) and need 3 minutes of failure, so a brief restart doesn't raise a problem.
+
 ## Problems found and fixed during rollout
 
 | Problem | How it was found | Fix |
@@ -73,10 +82,12 @@ flowchart LR
 
 ## What it caught
 
+**It survived a real fleet-wide reboot.** On day 3 all 6 servers were rebooted for a kernel update. Zabbix recorded the OS change on each server, and the monitoring stack (Podman pod), the agents and the nftables allowlist **all came back by themselves**, with no manual action (`podman-restart`, systemd units).
+
 Within the **first hour**, Zabbix flagged **high swap usage on 4 of 6 servers**, the same memory pressure seen earlier during manual incident work. Since then it has also recorded:
 - one web server reaching a **load average of 110** with CPU at **97%** over a 24-hour window
 - swap on several servers sitting **below 5% free for most of the day**
-- a **fleet-wide OS change** (a kernel patch) on 5 servers within about 40 minutes, detected automatically
+- the fleet-wide kernel update and reboots, detected automatically as OS changes plus uptime resets
 
 ![Zabbix problems](docs/images/zabbix-problems.png)
 
@@ -91,6 +102,7 @@ Every script is idempotent and runs as root. The real IPs live in a private runb
 AGENT_IPS="203.0.113.10 203.0.113.11" bash server/install-monitoring-server.sh
 bash server/configure-zabbix.sh        # PSK rotation, PSK-only auto-registration, Fleet group/action, Admin password
 bash server/set-display-names.sh       # short display names
+bash server/setup-services.sh         # service checks (web/MySQL/mail/WHM) + alert-noise tuning
 bash server/setup-grafana.sh           # read-only Zabbix user, data source, Fleet Overview dashboard
 
 # 2. Each monitored server (on the monitoring server itself use ZBX_SERVER=127.0.0.1)
@@ -111,6 +123,7 @@ ssh -L 18080:127.0.0.1:18080 -L 13000:127.0.0.1:13000 <monitoring-server>
 | Script | Purpose |
 |---|---|
 | `server/status.sh` | Fleet status table: agent availability, last data, CPU %, memory %, open problems |
+| `server/setup-services.sh` | Service checks template, triggers, alert-noise tuning (idempotent) |
 | `server/create-viewer.sh` | Read-only "viewer" account in Zabbix and Grafana |
 | `server/firewall-lock.sh` | Re-apply or extend the 10051 allowlist |
 | `server/configure-zabbix.sh` | Also rotates the PSK when re-run (then update the agents) |
@@ -124,6 +137,7 @@ server/
   firewall-lock.sh               nftables allowlist for 10051, persisted via systemd
   allow-agent.sh                 add one agent IP
   set-display-names.sh           short display names
+  setup-services.sh              service checks template + triggers, alert-noise tuning
   setup-grafana.sh               read-only Zabbix user, Grafana data source, dashboard import
   create-viewer.sh               read-only viewer account
   status.sh                      fleet status table
@@ -137,7 +151,7 @@ docs/images/                     screenshots
 ## Roadmap
 
 - **Alert notifications** (Telegram or email) with severity routing and a runbook link per alert
-- **Website availability and SSL-expiry checks** for key client sites
+- **Website availability and SSL-expiry checks** for key client sites (HTTP checks from outside the server)
 - **Ops tools:** a Bash health check and a Python log analyzer (top IPs, failed logins, error spikes)
 - **SLA report:** monthly uptime and incidents per server from Zabbix data, exported to Excel
 - **An external watchdog** for the monitoring server itself, and pinned image versions
