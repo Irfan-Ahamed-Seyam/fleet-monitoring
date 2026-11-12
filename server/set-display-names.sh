@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Set each Fleet host's *display name* to its short hostname (malmo.example.se -> malmo).
+# Set each Fleet host's *display name* to its short hostname (web01.example.com -> web01).
 # Keeps company domains out of dashboards/screenshots. The technical hostname is unchanged.
 #   bash set-display-names.sh
 set -euo pipefail
