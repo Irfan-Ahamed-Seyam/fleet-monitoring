@@ -128,6 +128,25 @@ ssh -L 18080:127.0.0.1:18080 -L 13000:127.0.0.1:13000 <monitoring-server>
 | `server/firewall-lock.sh` | Re-apply or extend the 10051 allowlist |
 | `server/configure-zabbix.sh` | Also rotates the PSK when re-run (then update the agents) |
 
+## System requirements
+
+| Role | Requirement |
+|---|---|
+| Monitoring server | EL9 (tested on AlmaLinux 9), Podman 4+, ~1.5 GB free RAM, 2 GB+ disk for 31 days of history, Python 3 |
+| Monitored servers | EL7 to EL10 (AlmaLinux, CloudLinux, RHEL-compatible), outbound TCP 10051 to the monitoring server |
+| Admin access | SSH to the monitoring server (for the tunnel), root for the install scripts |
+
+## Troubleshooting
+
+| Symptom | Likely cause | Check / fix |
+|---|---|---|
+| Agent log: `cannot connect to [server]:10051 (POLLERR)` | Outbound firewall on the agent (CSF `TCP_OUT`) | `timeout 5 bash -c '</dev/tcp/<server>/10051'`. The installer adds 10051 to CSF |
+| Agent log: `host [...] not found` | Normal on first contact. Auto-registration creates the host | It clears within ~1 minute ("active checks ... are active again") |
+| Agent connects but the host never appears | PSK mismatch, or the IP isn't in the allowlist | `nft list set inet fleetmon agents` on the server; compare `/etc/zabbix/fleet.psk` |
+| Port 10051 reachable from anywhere | Container ports bypass firewalld | `bash server/firewall-lock.sh`, then test from a non-allowlisted host |
+| A service shows DOWN but works | The service listens only on a public IP, not 127.0.0.1 | Adjust the check's key to that IP, or bind the service to localhost too |
+| A Grafana panel is empty or errors | Item name changed, or the read-only user can't see the host group | Re-run `setup-grafana.sh` (it re-syncs the user and data source) |
+
 ## Repository layout
 
 ```
